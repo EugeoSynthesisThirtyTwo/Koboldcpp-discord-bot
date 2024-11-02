@@ -5,25 +5,33 @@ from src.config import settings
 from src.character import load_character_card
 
 # Define the bot
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.messages = True
 client = discord.Client(intents=intents)
 
 bot_name = "bot"
-character = None
+character = load_character_card("characters/Niko.json")
+print(f"Loaded character: {character}")
 
-# Function to generate a response using KoboldCpp
+def generate_prompt(message_history) -> str:
+    return f"{message_history.author.mention}: {message_history}\n{character.name}: "
+
 def generate_response(prompt) -> str:
     data = {
         'prompt': prompt,
         'max_length': 150,  # Control how long the response is
         'temperature': 0.7,  # Adjust for randomness in responses
         'top_k': 50,
-        'top_p': 0.9
+        'top_p': 0.9,
+        "rep_pen": 1.1,
+        "rep_pen_range": 1024,
+        "rep_pen_slope": 1,
+        "tfs": 1,
+        "typical": 1
     }
 
     try:
-        response = requests.post(settings.koboldcpp_api_url, json=data)
+        response = requests.post(f"{settings.koboldcpp_api_url}/v1/generate", json=data)
         response_json = response.json()
         if 'text' in response_json:
             return response_json['text']
@@ -62,6 +70,7 @@ async def on_message(message):
 
     # Ignore the bot's own messages
     if message.author == client.user:
+        print(f"Ignoring message from {message.author.name} (ID: {message.author.id})")
         return
 
     # List available characters when the user types "!select"
@@ -87,15 +96,16 @@ async def on_message(message):
             await message.channel.send("Character selection timed out or an error occurred.")
     
     # Simple trigger to respond when bot is mentioned or a command like !ai is used
-    if message.content.startswith('!ai'):
-        prompt = message.content[len('!ai '):]
+    if character.name.upper() in message.content.upper():
+        message_history = message.content
         
-        if character:
-            # Generate a response using KoboldCpp with the selected character
-            response = generate_response(f"Character: {character}\nPrompt: {prompt}")
-        else:
-            response = "No character selected. Please use !select to choose a character."
+        prompt = generate_prompt(message_history)
 
+        print("prompt:", prompt)
+        # Generate a response using KoboldCpp with the selected character
+        response = generate_response(prompt)
+
+        print("response:", response)
         # Send the response back to Discord
         await message.channel.send(response)
 
