@@ -1,8 +1,9 @@
 import discord
-import requests
 import os
 from src.config import settings
 from src.character import load_character_card
+from src.chat_history import fetch_channel_history
+from src.kobold_client import generate_response
 
 # Define the bot
 intents = discord.Intents.all()
@@ -11,34 +12,17 @@ client = discord.Client(intents=intents)
 
 bot_name = "bot"
 character = load_character_card("characters/Niko.json")
+message_history_length = 10
 print(f"Loaded character: {character}")
 
 def generate_prompt(message_history) -> str:
-    return f"{message_history.author.mention}: {message_history}\n{character.name}: "
+    prompt = f"{character.name}'s description: {character.description}\n\n"
 
-def generate_response(prompt) -> str:
-    data = {
-        'prompt': prompt,
-        'max_length': 150,  # Control how long the response is
-        'temperature': 0.7,  # Adjust for randomness in responses
-        'top_k': 50,
-        'top_p': 0.9,
-        "rep_pen": 1.1,
-        "rep_pen_range": 1024,
-        "rep_pen_slope": 1,
-        "tfs": 1,
-        "typical": 1
-    }
+    for message in message_history:
+        prompt += f"{message[0]}: {message[1]}\n\n"
+    
+    return prompt
 
-    try:
-        response = requests.post(f"{settings.koboldcpp_api_url}/v1/generate", json=data)
-        response_json = response.json()
-        if 'text' in response_json:
-            return response_json['text']
-        else:
-            return "Error: No response generated."
-    except Exception as e:
-        return f"Error communicating with KoboldCpp: {e}"
 
 # Function to list and load character files
 def list_character_files():
@@ -97,7 +81,7 @@ async def on_message(message):
     
     # Simple trigger to respond when bot is mentioned or a command like !ai is used
     if character.name.upper() in message.content.upper():
-        message_history = message.content
+        message_history = await fetch_channel_history(client, message.channel.id, message_history_length)
         
         prompt = generate_prompt(message_history)
 
